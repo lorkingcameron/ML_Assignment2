@@ -20,8 +20,8 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_
 # Convert the data to PyTorch tensors
 X_train = torch.FloatTensor(X_train)
 X_test = torch.FloatTensor(X_test)
-y_train = torch.LongTensor(y_train)
-y_test = torch.LongTensor(y_test)
+y_train = torch.FloatTensor(y_train).view(-1, 1)  # Reshape y_train to a column vector
+y_test = torch.FloatTensor(y_test).view(-1, 1)  # Reshape y_test to a column vector
 
 # Define the logistic regression model
 class LogisticRegression(nn.Module):
@@ -32,30 +32,29 @@ class LogisticRegression(nn.Module):
     def forward(self, x):
         out = self.linear(x)
         return out
-    
+
+    def sigmoid(self, x):
+        return 1 / (1 + torch.exp(-x))
+
     def fit(self, X, y, learning_rate, num_epochs):
         # Training the logistic regression model with manual gradient computation
         for epoch in range(num_epochs):
             # Forward pass
             outputs = self(X)
-            logits = nn.functional.softmax(outputs, dim=1)
+            logits = self.sigmoid(outputs)
 
             # Calculate loss manually
-            loss = -torch.log(logits[range(len(y)), y]).mean()
+            loss = -((y * torch.log(logits) + (1 - y) * torch.log(1 - logits)).mean())
 
             # Manual gradient computation
-            dL_dy = logits
-            dL_dy[range(len(y)), y] -= 1
-            dL_dy /= len(y)
+            dL_dy = logits - y
 
             # Backward pass (compute gradients)
             self.zero_grad()
-
-                # Manually compute gradients for the weight and bias
             grad_weight = torch.mm(X.t(), dL_dy)
-            grad_bias = dL_dy.sum(dim=0)
+            grad_bias = dL_dy.sum()
 
-                # Update model parameters manually
+            # Update model parameters manually
             with torch.no_grad():
                 self.linear.weight -= learning_rate * grad_weight.t()
                 self.linear.bias -= learning_rate * grad_bias
@@ -66,8 +65,8 @@ class LogisticRegression(nn.Module):
     def predict(self, data):
         with torch.no_grad():
             outputs = self(data)
-            predicted = torch.max(outputs, 1)[1]
-            return predicted
+            logits = self.sigmoid(outputs)
+            return (logits >= 0.5).float()
 
 # Initialize the model and choose hyperparameters
 input_size = 4  # Number of features in the Iris dataset
@@ -82,7 +81,7 @@ model.fit(X_train, y_train, learning_rate, num_epochs)
 
 # Test the model
 predicted = model.predict(X_test)
-accuracy = (predicted == y_test).sum().item() / y_test.size(0)
+accuracy = (predicted == y_test).float().mean()
 print(f'Accuracy on the test set: {accuracy:.4f}')
 
 # Save the model if needed
